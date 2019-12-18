@@ -17,8 +17,7 @@ process.env.SECRET_KEY = 'secret'
 
 /* GET all posts . */
 router.get('/', async(req, res, next) =>{
-
-    
+  
   try {
       
     var result = await Post.find().populate('comments').populate('buyer','firstname lastname profileimg city Rating');
@@ -39,12 +38,14 @@ router.post('/',passport.authenticate('jwt', {session: false}), async(req, res, 
         description:req.body.description,
         postimages:req.body.postimages,
         price:req.body.price,
-         startingbid:req.body.startingbid,
+        startingbid:req.body.startingbid,
         city:req.body.city, 
         isapproved:false,
         isopen:false,
         quantity:req.body.quantity,
-        user: decoded.id
+        user: decoded.id,
+        username: decoded.username,
+        views:req.body.views
   }
   
 
@@ -80,17 +81,77 @@ router.post('/',passport.authenticate('jwt', {session: false}), async(req, res, 
 router.get('/:id', async(req, res, next) =>{
     try {
       var result = await Post.findById(req.params.id).populate('comments').populate('buyer','firstname lastname profileimg city Rating');
+
+      result.views = result.views + 1
+      result.save()
       res.send({result});
   } catch (error) {
       res.send({error})
   }
   });
 
+   /* Bid post (order) . */
+router.post('/:id/bid',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+  try {
+      var Headertoken = req.headers.authorization.split(' ')[1]
+      var decoded = jwt.verify(Headertoken, 'secret')
+       orderId = req.params.id
+       myUserId = decoded.id
+
+    var order = await Post.findById(orderId)
+
+      if(decoded.id != order.user){
+         
+               bid = {
+                userid:myUserId,
+                username:decoded.username,
+                value:req.body.value
+               }
+            var currentbid = order.bids[order.bids.length-1].value
+               
+               
+               if(order.quantity>0 && req.body.value != null ){
+                   
+              
+                if (req.body.value>currentbid && req.body.value>order.currentbid) {
+                   order.bids.push(bid)
+                await order.save()
+  
+                
+               res.json({msg:"bid regesterd"})
+                } else {
+                  res.json({msg:"value must be greater than current bid"})
+                }
+                
+               }else{
+                res.json({msg:"item is Sold out!"})
+               }
+    
+    
+      }else{
+        res.json({msg:"you cant bid on your post ! or you have to pass value as number"})
+      } 
+  } catch (error) {
+      res.json({error:error})
+  }
+  
+            
+    
+});
+
   /* edit post . */
 router.put('/:id',passport.authenticate('jwt', {session: false}), async(req, res, next) => {
+ var Headertoken = req.headers.authorization.split(' ')[1]
+    var decoded = jwt.verify(Headertoken, 'secret')
+    var findpost = await Post.findById(req.params.id)
 
-    
-    post = {
+    if (decoded.isadmin ==true) {
+      post = req.body
+      Post.findByIdAndUpdate(req.params.id,post)
+      .then(() => res.json({msg :`the post has been updated ` }))
+      .catch(err => res.send(err))
+    } else if(decoded.id == findpost.user) {
+      post = {
         title : req.body.title ,
         description:req.body.description,
         postimages:req.body.postimages,
@@ -100,19 +161,14 @@ router.put('/:id',passport.authenticate('jwt', {session: false}), async(req, res
         quantity:req.body.quantity
      }
 
-        var Headertoken = req.headers.authorization.split(' ')[1]
-    var decoded = jwt.verify(Headertoken, 'secret')
-      
-    var findpost = await Post.findById(req.params.id)
-    if(decoded.id == findpost.user || decoded.isadmin ==true ){
-         Post.findByIdAndUpdate(req.params.id,post)
-       .then(() => res.json({msg :`the post has been updated ` }))
-       .catch(err => res.send(err))
+      Post.findByIdAndUpdate(req.params.id,post)
+      .then(() => res.json({msg :`the post has been updated ` }))
+      .catch(err => res.send(err))
     }else{
-        res.json({msg :`Unauthorized ` } )
+      res.json({msg :`Unauthorized ` } )
     }
-   
-  
+
+
   });
 
   /* Delete one post and its comments . */
@@ -207,6 +263,60 @@ router.post('/:id/buy',passport.authenticate('jwt', {session: false}), async(req
     
     });
 
+  /* change isopen  . */
+  router.post('/:id/isopen',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+    try {
+     var Headertoken = req.headers.authorization.split(' ')[1]
+     var decoded = jwt.verify(Headertoken, 'secret')
+      var postToChange = await Post.findById(postId)
+   
+     if(decoded.isadmin ==true ||postToChange.user == decoded.id ){
+        
+              postId = req.params.id
+   
+             
+          postToChange.isopen = !(postToChange.isopen)
+          postToChange.save()
+
+              res.json({msg:"isopen status changed"})
+ 
+     }else{
+      res.json({msg:"not Authorized"})
+     }
+    } catch (error) {
+        res.json({error:error})
+    }
+     
+     
+     });
+
+     /* change isapproved  . */
+  router.post('/:id/isapproved',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+    try {
+     var Headertoken = req.headers.authorization.split(' ')[1]
+     var decoded = jwt.verify(Headertoken, 'secret')
+   
+     if(decoded.isadmin ==true){
+        
+              postId = req.params.id
+   
+              var postToChange = await Post.findById(postId)
+          postToChange.isapproved = !(postToChange.isapproved)
+          postToChange.save()
+
+              res.json({msg:"isapproved status changed"})
+ 
+     }else{
+      res.json({msg:"not Authorized"})
+     }
+    } catch (error) {
+        res.json({error:error})
+    }
+     
+     
+     });
+
+
 
 
    ////////////
@@ -217,12 +327,15 @@ router.post('/:id/buy',passport.authenticate('jwt', {session: false}), async(req
 router.post('/:id',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
     var Headertoken = req.headers.authorization.split(' ')[1]
 var decoded = jwt.verify(Headertoken, 'secret')
+
+
    try{ 
 
      var resultPost =  await Post.findById(req.params.id)
        const newComment = {
         description:req.body.description,
          user: decoded.id  ,
+         username: decoded.username,
          post: req.params.id
   }
   

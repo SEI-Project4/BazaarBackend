@@ -1,6 +1,7 @@
 var express = require('express');
 var router = express.Router();
 const User = require('../model/user')
+const Message = require('../model/message')
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const passport = require('passport');
@@ -11,7 +12,7 @@ process.env.SECRET_KEY = 'secret'
 /* GET all users . */
 router.get('/' ,passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
   try {
-    var result = await User.find().populate('following','firstname lastname profileimg Rating').populate('followers','firstname lastname profileimg Rating').populate('purchesedorder','description postimages city').populate('posts').populate('comments').populate('watchlater','title description postimages city');
+    var result = await User.find().populate('following','firstname lastname profileimg Rating').populate('followers','firstname lastname profileimg Rating').populate('purchesedorder','description postimages city').populate('posts').populate('comments').populate('watchlater','title description postimages city').populate('msg');
     res.send({result});
 } catch (error) {
     res.send({error})
@@ -30,7 +31,6 @@ router.post('/', function(req, res, next) {
     phonenumber : req.body.phonenumber,
     username : req.body.username,
     city : req.body.city,
-    Rating : 5,
     isadmin: false,
     isverified: false
 
@@ -138,6 +138,209 @@ router.post('/:followid',passport.authenticate('jwt', {session: false}), async(r
       res.json({error})
   }
   });
+
+  /* Rate user . */
+router.post('/:id/rate',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+
+  try {
+      var Headertoken = req.headers.authorization.split(' ')[1]
+      var decoded = jwt.verify(Headertoken, 'secret')
+if (req.body.star != null && req.body.review != null ) {
+
+  if (decoded.id != req.params.id) {
+
+    var otherUserid = req.params.id
+
+var otheruser = await User.findById(otherUserid)
+var fuser = await User.findById(decoded.id)
+
+    ratingObj={
+     username:fuser.username,
+     userid:fuser._id,
+     star:req.body.star,
+     review:req.body.review
+    }
+
+    //add rating to otheruser
+    otheruser.Rating.push(ratingObj)
+    otheruser.save()
+
+     res.json({msg:"follow Done"});
+
+ }
+} else {
+  res.json({msg:"you have to pass star and review"});
+}
+     
+
+    
+} catch (error) {
+   
+    res.json({error})
+}
+});
+
+  /* change password . */
+  router.post('/:id/changepassword',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+
+    try {
+        var Headertoken = req.headers.authorization.split(' ')[1]
+        var decoded = jwt.verify(Headertoken, 'secret')
+
+  if (req.body.newpassword != null && req.body.password != null) {
+  
+    if (decoded.id == req.params.id || decoded.isadmin == true) {
+  
+  
+
+  var fuser = await User.findById(decoded.id)
+  
+     
+//inputs
+const userCurrentPassword = req.body.password
+const hash = fuser.password
+const userNewPassword = req.body.newpassword
+
+
+
+ //confirm password
+bcrypt.compare(userCurrentPassword, hash, function(err, isMatch) {
+  if (err) {
+    throw err
+  } else if (!isMatch) {
+    res.json({"msg":"Password doesn't match!"})
+  } else {
+
+    //hashing new password
+    const saltRounds = 10
+ 
+bcrypt.genSalt(saltRounds, function (err, salt) {
+  if (err) {
+    throw err
+  } else {
+    bcrypt.hash(userNewPassword, salt, function(err, hash) {
+      if (err) {
+        throw err
+      } else {
+        fuser.password = hash
+        fuser.save()
+        res.json({"msg":"Password changed"})
+      }
+    })
+  }
+})
+
+
+  }
+})
+  
+  
+   }else{
+    res.json({msg:"not Authorized"});
+   }
+  } else {
+    res.json({msg:"you have to pass new and old password !"});
+  }
+       
+  
+      
+  } catch (error) {
+     
+      res.json({error})
+  }
+  });
+
+
+
+
+   /////////////
+  // Messages //
+  /////////////
+
+
+   /* create new message . */
+router.post('/send/:id',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+  var Headertoken = req.headers.authorization.split(' ')[1]
+var decoded = jwt.verify(Headertoken, 'secret')
+var user1 = await User.findById(decoded.id)
+var user2 = await User.findById(req.params.id)
+
+ try{ 
+
+  
+
+   const newMessage = {
+      user1:decoded.id,
+       user2: req.params.id,
+       username2: user2.username,
+       msg: {from:decoded.id,content:req.body.msg}
+}
+
+  var allmsg = await Message.findOne().and([{user1:decoded.id,user2:req.params.id}])
+  var allmsg1 = await Message.findOne().and([{user1:req.params.id,user2:decoded.id}])
+
+  if (allmsg != null) {
+    allmsg.msg.push(newMessage.msg) 
+     
+    if (allmsg.save()) {
+      res.json({msg: 'msg sent'})
+    }else{
+      res.json({msg: 'msg error'})
+    }
+     
+  } else if(allmsg1!= null){
+    allmsg1.msg.push(newMessage.msg)
+    if (allmsg1.save()) {
+      res.json({msg: 'msg sent'})
+    }else{
+      res.json({msg: 'msg error'})
+    }
+
+  }else {
+
+   await Message.create(newMessage, async(err, message)=>{
+        
+   try {
+    var com = message._id
+
+    user1.msg.push(com)
+    user2.msg.push(com)
+
+    if (user1.save() && user2.save() ) {
+      res.json({msg: 'msg sent'})
+    }else{
+      res.json({msg: 'msg error'})
+    }
+   } catch (error) {
+    res.json({error: error})
+   }
+   
+    
+    })
+  
+  
+  }
+}catch(error){
+    res.json({err:error})
+}
+            
+    
+});
+
+/* GET all message . */
+router.get('/allmsg' ,passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+  try {
+    var result = await Message.find();
+    console.log("result",result);
+    
+    res.json({result});
+} catch (error) {
+    res.send({error})
+}
+});
+
+
+
 
 
 module.exports = router;
