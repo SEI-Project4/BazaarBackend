@@ -58,7 +58,7 @@ User.findOne({email: req.body.email})
 /* GET one user . */
 router.get('/:id' ,passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
   try {
-    var result = await User.findById(req.params.id).populate('following','firstname lastname profileimg Rating').populate('followers','firstname lastname profileimg Rating').populate('purchesedorder','description postimages city').populate('posts').populate('comments').populate('watchlater','title description postimages city');
+    var result = await User.findById(req.params.id).populate('following','firstname lastname username profileimg Rating').populate('followers','firstname lastname username profileimg Rating').populate('purchesedorder','title description postimages city createdAt').populate('posts').populate('comments').populate('watchlater','title description postimages city').populate('msg');
     res.send({result});
 } catch (error) {
     res.send({error})
@@ -251,6 +251,34 @@ bcrypt.genSalt(saltRounds, function (err, salt) {
   });
 
 
+    /* change isverified  . */
+    router.post('/:id/isverified',passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+      try {
+       var Headertoken = req.headers.authorization.split(' ')[1]
+       var decoded = jwt.verify(Headertoken, 'secret')
+        userId = req.params.id
+        var userToChange = await User.findById(userId)
+     
+       if(decoded.isadmin ==true ){
+
+            userToChange.isverified = !(userToChange.isverified)
+            userToChange.save()
+  
+                res.json({msg:"isverified status changed"})
+   
+       }else{
+        res.json({msg:"not Authorized"})
+       }
+      } catch (error) {
+          res.json({error:error})
+      }
+       
+       
+       });
+
+
+
+
 
 
    /////////////
@@ -327,11 +355,15 @@ var user2 = await User.findById(req.params.id)
     
 });
 
-/* GET all message . */
-router.get('/allmsg' ,passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
+/* GET all message for one user . */
+router.get('/:id/allmsg' ,passport.authenticate('jwt', {session: false}), async(req, res, next) =>{
   try {
-    var result = await Message.find();
-    console.log("result",result);
+    var Headertoken = req.headers.authorization.split(' ')[1]
+    var decoded = jwt.verify(Headertoken, 'secret')
+     userId = req.params.id
+     
+     
+    var result = await Message.find().or([{user1:userId},{user2:userId}]);
     
     res.json({result});
 } catch (error) {

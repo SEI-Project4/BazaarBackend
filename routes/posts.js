@@ -113,7 +113,7 @@ router.post('/:id/bid',passport.authenticate('jwt', {session: false}), async(req
                if(order.quantity>0 && req.body.value != null ){
                    
               
-                if (req.body.value>currentbid && req.body.value>order.currentbid) {
+                if (req.body.value>currentbid && req.body.value>order.startingbid) {
                    order.bids.push(bid)
                 await order.save()
   
@@ -268,13 +268,12 @@ router.post('/:id/buy',passport.authenticate('jwt', {session: false}), async(req
     try {
      var Headertoken = req.headers.authorization.split(' ')[1]
      var decoded = jwt.verify(Headertoken, 'secret')
+     postId = req.params.id
       var postToChange = await Post.findById(postId)
    
      if(decoded.isadmin ==true ||postToChange.user == decoded.id ){
         
-              postId = req.params.id
-   
-             
+
           postToChange.isopen = !(postToChange.isopen)
           postToChange.save()
 
